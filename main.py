@@ -112,9 +112,6 @@ model_path = "./gesture_recognizer.task"
 base_options = BaseOptions(model_asset_path=model_path)
 
 
-# Initialize webcam
-cap = cv2.VideoCapture(1)
-
 # Get screen size
 screen_width, screen_height = pyautogui.size()
 
