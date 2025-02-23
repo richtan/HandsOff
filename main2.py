@@ -7,6 +7,8 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import time
 
+from mac_actions import volume_up, volume_down
+
 
 # Initialize MediaPipe Hand detection
 mp_hands = mp.solutions.hands
@@ -29,6 +31,11 @@ model_path = "./gesture_recognizer.task"
 base_options = BaseOptions(model_asset_path=model_path)
 
 
+# last_gesture = "None"
+# gesture_time = 0
+# gesture_start_time = 0
+
+
 def gesture_result_callback(
     result: GestureRecognizerResult, output_image: mp.Image, timestamp_ms: int
 ):
@@ -36,6 +43,18 @@ def gesture_result_callback(
         # Get the category name of the recognized gesture
         category_name = result.gestures[0][0].category_name
         print(category_name)
+
+        # if category_name == last_gesture:
+        #     # Nothing
+        #     x = 5
+        # else:
+        #     last_gesture = category_name
+
+        if category_name == "Thumb_Up":
+            volume_up(1)
+        elif category_name == "Thumb_Down":
+            volume_down(1)
+
         # print(result)
     else:
         print("No gestures recognized")
@@ -49,7 +68,7 @@ options = GestureRecognizerOptions(
 
 
 # Initialize webcam
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(1)
 
 # Get screen size
 screen_width, screen_height = pyautogui.size()
