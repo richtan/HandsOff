@@ -15,7 +15,7 @@ def open_app_fullscreen(app: str, AXFullScreen=False):
 	    set appRunning to (name of processes) contains "{app}"
         end tell
 
-        tell application "Safari"
+        tell application "{app}"
             if not appRunning then
                 activate
                 delay 0.5
@@ -156,7 +156,7 @@ def exit_window():
     run(["osascript", "-e", script])
 
 
-def minimize_front_window():
+def minimize_front_window(includeEsc=False):
     s = f'''
     tell application "System Events"
         key code 46 using command down  -- (Cmd + M)

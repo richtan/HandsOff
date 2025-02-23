@@ -17,7 +17,7 @@ from mac_actions import (
 
 # Initialize MediaPipe Hand detection
 ENABLE_HEAD_TRACKING = True
-ENABLE_SWIPE_GESTURE = False
+ENABLE_SWIPE_GESTURE = True
 SHOW_CAMERA_FEED = True  # Add this flag to toggle camera feed display
 CAMERA_DEVICE_ID = 1
 
@@ -204,6 +204,7 @@ def detect_transitions_and_features():
                 if 0 < time_diff <= 1000:
                     print("Gesture Transition Detected: Closed Fist → Open Fist")
                     # action here
+                    # open_app_fullscreen()
                     last_gestures.clear()
                     break
         elif gesture == "Closed_Fist":
@@ -215,7 +216,7 @@ def detect_transitions_and_features():
                 # Transition must happen within 1 second
                 if 0 < time_diff <= 1000:
                     print("Gesture Transition Detected: Open Palm → Closed Fist")
-                    minimize_front_window()
+                    minimize_front_window(True)
                     last_gestures.clear()
                     break
 
@@ -253,7 +254,7 @@ def is_palm_facing(hand_landmarks, is_right_hand):
 
 
 # Update these constants for pointing direction detection
-POINTING_DIRECTION_COOLDOWN = 0.3  # Cooldown between direction changes
+POINTING_DIRECTION_COOLDOWN = 1  # Cooldown between direction changes
 HORIZONTAL_THRESHOLD = 0.3  # How horizontal the finger needs to be
 MIN_FINGER_EXTENSION = 0.1  # Minimum extension of index finger
 
@@ -562,7 +563,8 @@ def detect_pointing_direction(hand_landmarks, current_time, is_right_hand):
         direction_is_pointing = False
 
     # Skip if no clear direction or same as last direction
-    if direction == 0 or direction == last_direction:
+    # if direction == 0 or direction == last_direction:
+    if direction == 0:
         return
 
     # Update last direction and time
