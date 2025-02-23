@@ -98,26 +98,38 @@ def is_palm_facing(hand_landmarks, is_right_hand):
 
 def is_finger_pointing(hand_landmarks):
     """Check if index finger is pointing up while other fingers are closed"""
-    # Get y-coordinates of finger landmarks
-    index_tip = hand_landmarks.landmark[8].y
-    index_pip = hand_landmarks.landmark[6].y  # Joint below tip
-    index_mcp = hand_landmarks.landmark[5].y  # Base of index finger
+    # Get coordinates of index finger landmarks from base to tip
+    index_mcp = hand_landmarks.landmark[5]  # Base
+    index_pip = hand_landmarks.landmark[6]  # First joint
+    index_dip = hand_landmarks.landmark[7]  # Second joint
+    index_tip = hand_landmarks.landmark[8]  # Tip
+    
+    # Get y-coordinates for other fingers
     middle_tip = hand_landmarks.landmark[12].y
     ring_tip = hand_landmarks.landmark[16].y
     pinky_tip = hand_landmarks.landmark[20].y
     
-    # More tolerant index finger extension check
-    index_extended = index_tip < index_mcp
+    # Minimum height difference between segments (in normalized coordinates)
+    MIN_HEIGHT_DIFF = 0.02  # Adjust this value to control how "straight" the finger needs to be
     
-    # More tolerant check for other fingers being curled
-    # Allow fingers to be a bit more extended during fast movements
+    # Check if each segment is higher than the previous one by the minimum difference
+    is_ascending = (
+        (index_tip.y + MIN_HEIGHT_DIFF < index_dip.y) and
+        (index_dip.y + MIN_HEIGHT_DIFF < index_pip.y) and
+        (index_pip.y + MIN_HEIGHT_DIFF < index_mcp.y)
+    )
+    
+    # Check if index is extended upward
+    index_extended = index_tip.y < index_mcp.y
+    
+    # Check if other fingers are curled
     others_curled = all([
-        middle_tip > index_pip - 0.1,  # Added tolerance of 0.1
-        ring_tip > index_pip - 0.1,
-        pinky_tip > index_pip - 0.1
+        middle_tip > index_pip.y - 0.1,
+        ring_tip > index_pip.y - 0.1,
+        pinky_tip > index_pip.y - 0.1
     ])
     
-    return index_extended and others_curled
+    return is_ascending and index_extended and others_curled
 
 def is_index_tap(hand_landmarks, prev_y):
     """Detect if index finger is touching thumb"""
