@@ -281,12 +281,18 @@ def is_facing_forward(face_landmarks, frame):
     
     x = angles[0] * 360
     y = angles[1] * 360
-    
-    # Define thresholds for "forward-facing"
-    FORWARD_X_THRESHOLD = 8  # Vertical angle threshold
-    FORWARD_Y_THRESHOLD = 4  # Horizontal angle threshold
-    
-    return abs(y) < FORWARD_Y_THRESHOLD and abs(x) < FORWARD_X_THRESHOLD
+    z = angles[2] * 360
+
+    if y <= -3:
+        return 0
+    elif y >= 2.8:
+        return 0
+    elif x <= 0.4:
+        return 0
+    elif x >= 4.4:
+        return 0
+    else:
+        return 1
 
 while True:
     curr_time = time.time()
