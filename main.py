@@ -3,6 +3,9 @@ import mediapipe as mp
 import pyautogui
 import numpy as np
 import time
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+from mac_actions import volume_up, volume_down
 
 ENABLE_HEAD_TRACKING = True
 SHOW_CAMERA_FEED = True  # Add this flag to toggle camera feed display
@@ -83,6 +86,19 @@ face_mesh = mp_face_mesh.FaceMesh(
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5
 )
+
+# Add after other MediaPipe initializations
+BaseOptions = mp.tasks.BaseOptions
+GestureRecognizer = mp.tasks.vision.GestureRecognizer
+GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
+GestureRecognizerResult = mp.tasks.vision.GestureRecognizerResult
+VisionRunningMode = mp.tasks.vision.RunningMode
+
+model_path = "./gesture_recognizer.task"
+base_options = BaseOptions(model_asset_path=model_path)
+
+# Add these variables before the main loop
+last_gestures = []
 
 def is_palm_facing(hand_landmarks, is_right_hand):
     thumb_base = hand_landmarks.landmark[1]
@@ -312,6 +328,73 @@ def is_facing_forward(face_landmarks, frame):
     else:
         return 1
 
+def detect_transitions_and_features():
+    global last_gestures
+
+    if last_gestures[-1][0] == "Thumb_Up":
+        volume_up(1)
+        last_gestures.pop()
+        return
+    elif last_gestures[-1][0] == "Thumb_Down":
+        volume_down(1)
+        last_gestures.pop()
+        return
+
+    open_palm_time = None
+    closed_fist_time = None
+
+    for last_gesture in last_gestures:
+        gesture, timestamp = last_gesture
+
+        if gesture == "Open_Palm":
+            open_palm_time = timestamp
+
+            if closed_fist_time:
+                time_diff = timestamp - closed_fist_time
+
+                # Transition must happen within 1 second
+                if 0 < time_diff <= 1000:
+                    print("Gesture Transition Detected: Closed Fist → Open Fist")
+                    last_gestures.clear()
+                    break
+        elif gesture == "Closed_Fist":
+            closed_fist_time = timestamp
+
+            if open_palm_time:
+                time_diff = timestamp - open_palm_time
+
+                # Transition must happen within 1 second
+                if 0 < time_diff <= 1000:
+                    print("Gesture Transition Detected: Open Palm → Closed Fist")
+                    last_gestures.clear()
+                    break
+
+def gesture_result_callback(
+    result: GestureRecognizerResult, output_image: mp.Image, timestamp_ms: int
+):
+    if result.gestures:
+        # Get the category name of the recognized gesture
+        category_name = result.gestures[0][0].category_name
+        print("Detected:", category_name)
+
+        global last_gestures
+        last_gestures.append((category_name, timestamp_ms))
+
+        # Keep only the last few gestures to prevent memory issues
+        if len(last_gestures) > 10:
+            last_gestures.pop(0)
+
+        detect_transitions_and_features()
+    else:
+        print("No gestures recognized")
+
+# Add before the main loop
+options = GestureRecognizerOptions(
+    base_options,
+    running_mode=VisionRunningMode.LIVE_STREAM,
+    result_callback=gesture_result_callback,
+)
+
 while True:
     curr_time = time.time()
     elapsed = curr_time - prev_time
@@ -494,6 +577,19 @@ while True:
         pass
 
     prev_time = curr_time
+
+    # Modify the main loop to include gesture recognition
+    # Inside the while True loop, after processing hands but before displaying frame:
+    with GestureRecognizer.create_from_options(options) as recognizer:
+        if results.multi_hand_landmarks and facing_forward:
+            for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+                # Perform gesture recognition on the processed image
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+                current_time_ms = int(time.time() * 1000)
+                
+                detected_gestures = recognizer.recognize_async(
+                    mp_image, current_time_ms
+                )
 
 # Release resources
 cap.release()
