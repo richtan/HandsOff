@@ -94,23 +94,27 @@ def toggle_play_pause_on_app(delay=0.5):
     run(["osascript", "-e", script])
 
 
-def volume_up():
-    s = """set theOutput to output volume of (get volume settings)
-        set newVolume to theOutput + 6.25
-        if newVolume > 100 then set newVolume to 100
-        set volume output volume newVolume
-        display notification "Volume set to " & newVolume & "%" with title "Volume Up"
+def volume_up(amount=6.25):
+    s = f"""set theOutput to output volume of (get volume settings)
+        if not (theOutput = 100) then
+            set newVolume to theOutput + {amount}
+            if newVolume > 100 then set newVolume to 100
+            set volume output volume newVolume
+            display notification "Volume set to " & newVolume & "%" with title "Volume Up"
+        end if
         """
 
     Popen(["osascript", "-e", s])
 
 
-def volume_down():
-    s = """set theOutput to output volume of (get volume settings)
-        set newVolume to theOutput - 6.25
-        if newVolume < 0 then set newVolume to 0
-        set volume output volume newVolume
-        display notification "Volume set to " & newVolume & "%" with title "Volume Down"
+def volume_down(amount=6.25):
+    s = f"""set theOutput to output volume of (get volume settings)
+        if not (theOutput = 0) then
+            set newVolume to theOutput - {amount}
+            if newVolume < 0 then set newVolume to 0
+            set volume output volume newVolume
+            display notification "Volume set to " & newVolume & "%" with title "Volume Down"
+        end if
         """
 
     Popen(["osascript", "-e", s])
