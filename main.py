@@ -8,12 +8,13 @@ from mac_actions import (
     volume_down,
     switch_desktop_left,
     switch_desktop_right,
+    open_app_fullscreen
 )
 
 # Initialize MediaPipe Hand detection
 ENABLE_HEAD_TRACKING = True
 SHOW_CAMERA_FEED = True  # Add this flag to toggle camera feed display
-CAMERA_DEVICE_ID = 1
+CAMERA_DEVICE_ID = 0
 
 # Initialize MediaPipe Hand detection
 mp_hands = mp.solutions.hands
@@ -142,7 +143,10 @@ def detect_transitions_and_features():
         volume_down(1)
         last_gestures.pop()
         return
-
+    elif last_gestures[-1][0] == "ILoveYou":
+        open_app_fullscreen("Safari")
+        last_gestures.pop()
+        return
     open_palm_time = None
     closed_fist_time = None
 
