@@ -16,7 +16,7 @@ from mac_actions import (
 ENABLE_HEAD_TRACKING = True
 ENABLE_SWIPE_GESTURE = True
 SHOW_CAMERA_FEED = True  # Add this flag to toggle camera feed display
-CAMERA_DEVICE_ID = 1
+CAMERA_DEVICE_ID = 0
 
 # Initialize MediaPipe Hand detection
 mp_hands = mp.solutions.hands
