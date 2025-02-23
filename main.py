@@ -5,7 +5,7 @@ import numpy as np
 import time
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
-from mac_actions import volume_up, volume_down
+from mac_actions import volume_up, volume_down, switch_desktop_left, switch_desktop_right
 
 ENABLE_HEAD_TRACKING = True
 SHOW_CAMERA_FEED = True  # Add this flag to toggle camera feed display
@@ -99,6 +99,17 @@ base_options = BaseOptions(model_asset_path=model_path)
 
 # Add these variables before the main loop
 last_gestures = []
+
+# Update these constants for more responsive swipes
+SWIPE_THRESHOLD = 0.04  # Even lower threshold for quicker detection
+SWIPE_COOLDOWN = 0.1   # Shorter cooldown
+SWIPE_MIN_DURATION = 0.0  # Remove minimum duration requirement
+SWIPE_MAX_DURATION = 0.4  # Shorter maximum duration for faster response
+SWIPE_VERTICAL_TOLERANCE = 3.0  # Even more vertical tolerance
+
+# Add these variables before the main loop
+last_hand_positions = []
+last_swipe_time = 0
 
 def is_palm_facing(hand_landmarks, is_right_hand):
     thumb_base = hand_landmarks.landmark[1]
@@ -395,6 +406,68 @@ options = GestureRecognizerOptions(
     result_callback=gesture_result_callback,
 )
 
+def detect_hand_swipe(hand_landmarks, current_time, is_right_hand):
+    """
+    Detect horizontal hand swipes with optimized responsiveness.
+    """
+    global last_hand_positions, last_swipe_time
+    
+    # Skip if too soon after last swipe
+    if current_time - last_swipe_time < SWIPE_COOLDOWN:
+        return
+        
+    # Only track fingertips for faster processing
+    fingertip_indices = [4, 8, 12, 16, 20]  # just fingertips
+    
+    current_points = [(hand_landmarks.landmark[i].x, hand_landmarks.landmark[i].y) 
+                     for i in fingertip_indices]
+    
+    # Add current position
+    last_hand_positions.append((current_points, current_time, is_right_hand))
+    
+    # Keep only very recent positions
+    while last_hand_positions and current_time - last_hand_positions[0][1] > SWIPE_MAX_DURATION:
+        last_hand_positions.pop(0)
+    
+    # Need at least 2 positions
+    if len(last_hand_positions) < 2:
+        return
+    
+    # Get start and end positions
+    start_points, start_time, start_hand = last_hand_positions[0]
+    end_points, end_time, end_hand = last_hand_positions[-1]
+    
+    # Basic duration check
+    duration = end_time - start_time
+    if duration > SWIPE_MAX_DURATION:  # Only check maximum duration
+        return
+    
+    # Calculate movements (simplified)
+    movements = [end_point[0] - start_point[0] 
+                for start_point, end_point in zip(start_points, end_points)]
+    
+    # Get average horizontal movement
+    avg_movement = sum(movements) / len(movements)
+    
+    # Quick threshold check
+    if abs(avg_movement) < SWIPE_THRESHOLD:
+        return
+    
+    # Simple direction check
+    if (is_right_hand and avg_movement > 0) or (not is_right_hand and avg_movement < 0):
+        return
+    
+    # Valid swipe detected
+    last_swipe_time = current_time
+    last_hand_positions.clear()
+    
+    if avg_movement > 0:  # Moving right (must be left hand)
+        switch_desktop_left()
+        print("Left hand swipe right detected - moving left")
+    else:  # Moving left (must be right hand)
+        switch_desktop_right()
+        print("Right hand swipe left detected - moving right")
+
 while True:
     curr_time = time.time()
     elapsed = curr_time - prev_time
@@ -463,8 +536,8 @@ while True:
             handedness_score = handedness.classification[0].score
             is_right_hand = handedness.classification[0].label == 'Right'
             
-            # Skip if confidence is too low or not right hand
-            if handedness_score < 0.8 or not is_right_hand:  # Added confidence threshold
+            # Skip only if confidence is too low
+            if handedness_score < 0.8:  # Removed the right hand check
                 continue
 
             # Calculate z average with smoothing
@@ -480,7 +553,8 @@ while True:
             z_avg = sum(z_avg_buffer) / len(z_avg_buffer)
             print(f"Smoothed z_avg: {z_avg:.3f}")
 
-            if is_palm_facing(hand_landmarks, is_right_hand):
+            # First check for pointing/cursor movement if it's the right hand
+            if is_palm_facing(hand_landmarks, is_right_hand) and is_right_hand:
                 # Check for pointing gesture
                 is_pointing = is_finger_pointing(hand_landmarks)
                 current_time = time.time()
@@ -527,7 +601,6 @@ while True:
                             
                             movement_delta = np.sqrt(delta_x**2 + delta_y**2)
                             if movement_delta > MIN_MOVEMENT_THRESHOLD:
-                                # Move directly to the new position without scaling or duration
                                 pyautogui.moveTo(mouse_x, mouse_y, _pause=False)
                                 last_mouse_x = mouse_x
                                 last_mouse_y = mouse_y
@@ -539,13 +612,10 @@ while True:
                         cv2.circle(frame,
                                  (int(index_tip.x * cam_width), int(index_tip.y * cam_height)),
                                  8, (255, 0, 0), -1)  # Red circle for click detection point
+                    continue  # Skip swipe detection if we're pointing
 
-                elif was_pointing:  # Only reset if we're past grace period
-                    if current_time - last_pointing_time >= POINTING_GRACE_PERIOD:
-                        was_pointing = False
-                        last_mouse_x = None
-                        last_mouse_y = None
-                        finger_counter = 0
+            # Only check for swipes if we're not pointing
+            detect_hand_swipe(hand_landmarks, time.time(), is_right_hand)
 
     # Add text to show if facing forward and control status
     status_text = "Controls Active" if facing_forward else "Face Forward to Enable Controls"
