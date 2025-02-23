@@ -674,7 +674,7 @@ with GestureRecognizer.create_from_options(gesture_options) as recognizer:
 
                 # Calculate smoothed z average
                 z_avg = sum(z_avg_buffer) / len(z_avg_buffer)
-                print(f"Smoothed z_avg: {z_avg:.3f}")
+                # print(f"Smoothed z_avg: {z_avg:.3f}")
 
                 # Media Pipe Model Gesture Checking
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
