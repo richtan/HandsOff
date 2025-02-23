@@ -13,24 +13,29 @@ def open_app(app: str):
 def open_app_fullscreen(app: str):
     s = f"""
         tell application "System Events"
-          set appRunning to (name of processes) contains "{app}"
+	    set appRunning to (name of processes) contains "{app}"
         end tell
 
-        
-        tell application "{app}"
-          if not appRunning then
-            make new document
-          end if
-          
-          activate
-          reopen
-          
-          tell application "System Events" to tell process "{app}"
-            set value of attribute "AXFullScreen" of window 1 to true
-          end tell
+        tell application "Safari"
+            if not appRunning then
+                activate
+                delay 0.5
+            end if
+            
+            reopen
+            activate 
+            
+            tell application "System Events"
+                tell process "{app}"
+                    try
+                        set value of attribute "AXFullScreen" of window 1 to true
+                    on error
+                        perform action "AXRaise" of window 1
+                    end try
+                end tell
+            end tell
         end tell
         """
-
     # set value of attribute "AXFullScreen" of window 1 to true
     # set position of window 1 to {0, 0}
     # set size of window 1 to {4000, 4000}
