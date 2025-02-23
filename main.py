@@ -86,9 +86,12 @@ face_mesh = mp_face_mesh.FaceMesh(
 def is_palm_facing(hand_landmarks, is_right_hand):
     thumb_base = hand_landmarks.landmark[1]
     pinky_base = hand_landmarks.landmark[17]
-
-    # Check that thumb is to left of pinky and thumb is also left of base of hand
-    # to make sure palm is facing screen
+    wrist = hand_landmarks.landmark[0]
+    middle_base = hand_landmarks.landmark[9]
+    
+    # Additional check for hand orientation
+    # For right hand: thumb should be left of pinky AND hand direction should be rightward
+    # For left hand: thumb should be right of pinky AND hand direction should be leftward
     if is_right_hand:
         return thumb_base.x < pinky_base.x
     return thumb_base.x > pinky_base.x
@@ -360,10 +363,12 @@ while True:
             # Draw hand landmarks
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
+            # Get handedness confidence and label
+            handedness_score = handedness.classification[0].score
             is_right_hand = handedness.classification[0].label == 'Right'
             
-            # Skip if not right hand
-            if not is_right_hand:
+            # Skip if confidence is too low or not right hand
+            if handedness_score < 0.8 or not is_right_hand:  # Added confidence threshold
                 continue
 
             # Calculate z average with smoothing
