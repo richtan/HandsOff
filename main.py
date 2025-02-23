@@ -9,8 +9,8 @@ mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(
     static_image_mode=False,
     max_num_hands=1,
-    min_detection_confidence=0.7,
-    min_tracking_confidence=0.5,
+    min_detection_confidence=0.5,  # Lowered from 0.7 for better detection
+    min_tracking_confidence=0.3,   # Lowered from 0.5 for better tracking
 )
 mp_draw = mp.solutions.drawing_utils
 
@@ -52,6 +52,12 @@ last_mouse_y = None
 # Adjust the constants for asymmetric margins
 FRAME_MARGIN_X = 0.1  # 10% margin on left/right
 FRAME_MARGIN_Y = 0.15  # 15% margin on top/bottom - more vertical space for detection
+
+# Add these constants near the top with other constants
+CLICK_COOLDOWN = 0.5  # Minimum time between clicks in seconds
+last_click_time = 0
+last_pinky_y = None
+CLICK_THRESHOLD = 0.03  # How far pinky needs to move down to trigger click
 
 def is_palm_facing(hand_landmarks, is_right_hand):
     thumb_base = hand_landmarks.landmark[1]
@@ -125,6 +131,15 @@ def map_coordinates_to_screen(x, y, frame_width, frame_height):
     
     return int(screen_x), int(screen_y)
 
+def is_pinky_tap(hand_landmarks, prev_y):
+    """Detect if pinky has moved down significantly"""
+    if prev_y is None:
+        return False
+        
+    pinky_tip = hand_landmarks.landmark[20].y
+    movement = pinky_tip - prev_y
+    return movement > CLICK_THRESHOLD
+
 frametime = 1.0 / FPS
 prev_time = time.time()
 
@@ -139,6 +154,15 @@ while True:
 
     # Flip the frame horizontally
     frame = cv2.flip(frame, 1)
+
+    # Add preprocessing steps for better detection in bright conditions
+    # 1. Adjust contrast and brightness
+    alpha = 1.2  # Contrast control (1.0 means no change)
+    beta = -30   # Brightness control (0 means no change)
+    frame = cv2.convertScaleAbs(frame, alpha=alpha, beta=beta)
+    
+    # 2. Apply slight Gaussian blur to reduce noise
+    frame = cv2.GaussianBlur(frame, (5, 5), 0)
 
     # Convert BGR to RGB
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -171,6 +195,18 @@ while True:
                 if is_pinch_gesture(hand_landmarks):
                     # Get index finger tip position
                     index_tip = hand_landmarks.landmark[8]
+                    
+                    # Track pinky position and check for clicks
+                    current_time = time.time()
+                    pinky_tip_y = hand_landmarks.landmark[20].y
+                    
+                    if (last_pinky_y is not None and 
+                        current_time - last_click_time > CLICK_COOLDOWN and
+                        is_pinky_tap(hand_landmarks, last_pinky_y)):
+                        pyautogui.click()
+                        last_click_time = current_time
+                        
+                    last_pinky_y = pinky_tip_y
 
                     # Map coordinates using the middle 80% of frame
                     raw_x, raw_y = map_coordinates_to_screen(
@@ -219,6 +255,7 @@ while True:
                     # Reset buffers and last position when pinch gesture ends
                     last_mouse_x = None
                     last_mouse_y = None
+                    last_pinky_y = None
                     x_pos_buffer.clear()
                     y_pos_buffer.clear()
 
