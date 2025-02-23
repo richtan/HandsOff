@@ -56,7 +56,6 @@ FRAME_MARGIN_Y = 0.15  # 15% margin on top/bottom - more vertical space for dete
 
 # Add these constants near the top with other constants
 CLICK_COOLDOWN = 0.2  # Adjusted for thumb-index clicking
-CLICK_THRESHOLD = 0.05  # Not used anymore but keeping for reference
 last_click_time = 0
 last_pinky_y = None
 
@@ -115,10 +114,51 @@ def is_index_tap(hand_landmarks, prev_y):
         (thumb_tip.z - index_tip.z)**2
     )
     
-    # Increased threshold for more tolerant click detection
-    TOUCH_THRESHOLD = 0.07  # Increased from 0.05
+    # Calculate z average for scaling
+    z_values = [landmark.z for landmark in hand_landmarks.landmark]
+    current_z_avg = sum(z_values) / len(z_values)
     
-    return distance < TOUCH_THRESHOLD
+    # Scale threshold based on z distance with adjusted ranges
+    BASE_TOUCH_THRESHOLD = 0.07
+    
+    # Adjust scaling to be more reasonable at close range
+    # Map z_avg from [-0.15, -0.01] to [1.5, 0.8]
+    if current_z_avg > -0.01:  # Very close to camera
+        scale_factor = 0.8
+    else:
+        scale_factor = map_range(
+            current_z_avg,
+            -0.15,  # furthest expected z
+            -0.01,  # closest expected z
+            1.5,    # scale up threshold when far
+            0.8     # scale down threshold when close
+        )
+    
+    scaled_threshold = BASE_TOUCH_THRESHOLD * scale_factor
+    scaled_threshold = max(0.05, min(0.1, scaled_threshold))  # Tighter clamp range
+    
+    # Draw line between thumb and index
+    thumb_pixel = (int(thumb_tip.x * cam_width), int(thumb_tip.y * cam_height))
+    index_pixel = (int(index_tip.x * cam_width), int(index_tip.y * cam_height))
+    
+    # Draw line in green if touching, red if not
+    color = (0, 255, 0) if distance < scaled_threshold else (0, 0, 255)
+    cv2.line(frame, thumb_pixel, index_pixel, color, 2)
+    
+    # Draw distance, threshold, and z values
+    mid_point = (
+        (thumb_pixel[0] + index_pixel[0]) // 2,
+        (thumb_pixel[1] + index_pixel[1]) // 2
+    )
+    cv2.putText(frame, f"D: {distance:.2f} T: {scaled_threshold:.2f}", mid_point, 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+    
+    # Add z value display slightly below
+    z_point = (mid_point[0], mid_point[1] + 20)
+    cv2.putText(frame, f"Z: {current_z_avg:.2f}", z_point,
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+    
+    return distance < scaled_threshold
 
 def map_range(value, in_min, in_max, out_min, out_max):
     """Map a value from one range to another"""
@@ -270,17 +310,11 @@ while True:
                     index_mcp = hand_landmarks.landmark[5]  # Base of index finger
                     index_tip = hand_landmarks.landmark[8]  # Tip for click detection
                     
-                    # Track index tip position for click detection
-                    index_tip_y = index_tip.y
-                    
-                    if (last_index_y is not None and 
-                        current_time - last_click_time > CLICK_COOLDOWN and
-                        is_index_tap(hand_landmarks, last_index_y)):
+                    if (current_time - last_click_time > CLICK_COOLDOWN and
+                        is_index_tap(hand_landmarks, None)):
                         pyautogui.click(_pause=False)
                         last_click_time = current_time
-                        
-                    last_index_y = index_tip_y
-
+                    
                     # Only update cursor position if actually pointing (not in grace period)
                     if finger_counter >= FINGER_CONFIRMATION_FRAMES:
                         raw_x, raw_y = map_coordinates_to_screen(
@@ -321,9 +355,6 @@ while True:
                         was_pointing = False
                         last_mouse_x = None
                         last_mouse_y = None
-                        last_index_y = None
-                        x_pos_buffer.clear()
-                        y_pos_buffer.clear()
                         finger_counter = 0
 
     # Display the frame
