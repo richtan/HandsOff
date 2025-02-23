@@ -5,6 +5,7 @@ import numpy as np
 import time
 
 ENABLE_HEAD_TRACKING = True
+SHOW_CAMERA_FEED = True  # Add this flag to toggle camera feed display
 
 # Initialize MediaPipe Hand detection
 mp_hands = mp.solutions.hands
@@ -475,12 +476,22 @@ while True:
                 status_color,
                 2)
 
-    # Display the frame
-    cv2.imshow("Hand Tracking", frame)
+    # Display the frame if SHOW_CAMERA_FEED is True
+    try:
+        if SHOW_CAMERA_FEED:
+            cv2.imshow("Hand Tracking", frame)
+        else:
+            # Try to close the window if it exists
+            try:
+                cv2.destroyWindow("Hand Tracking")
+            except:
+                pass
 
-    # Break the loop if 'q' is pressed
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        break
+        # Break the loop if 'q' is pressed
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+    except:
+        pass
 
     prev_time = curr_time
 
