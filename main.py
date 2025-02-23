@@ -74,8 +74,9 @@ last_click_time = 0
 last_pinky_y = None
 
 # Add these constants near the top with other constants
-FINGER_CONFIRMATION_FRAMES = 2  # Reduced from 3 to detect pointing faster
+FINGER_CONFIRMATION_FRAMES = 2  # Number of frames to confirm pointing
 finger_counter = 0  # Track consecutive pointing frames
+is_pointing = False  # Track current pointing state
 was_pointing = False  # Track previous pointing state
 
 # Add these constants near the top with other constants
@@ -233,42 +234,89 @@ def is_palm_facing(hand_landmarks, is_right_hand):
     return thumb_base.x > pinky_base.x
 
 
-def is_finger_pointing(hand_landmarks):
-    """Check if index finger is pointing up while other fingers are closed"""
-    # Get coordinates of index finger landmarks from base to tip
+# Update these constants for pointing direction detection
+POINTING_DIRECTION_COOLDOWN = 0.3  # Cooldown between direction changes
+HORIZONTAL_THRESHOLD = 0.3  # How horizontal the finger needs to be
+MIN_FINGER_EXTENSION = 0.1  # Minimum extension of index finger
+
+# Add these variables before the main loop
+last_direction_time = 0
+last_direction = None
+
+
+def is_finger_pointing_horizontal(hand_landmarks):
+    """Check if index finger is pointing horizontally while other fingers are closed"""
+    # Get coordinates of index finger landmarks
     index_mcp = hand_landmarks.landmark[5]  # Base
     index_pip = hand_landmarks.landmark[6]  # First joint
     index_dip = hand_landmarks.landmark[7]  # Second joint
     index_tip = hand_landmarks.landmark[8]  # Tip
+    
+    # Get middle, ring, and pinky tip positions to check if they're closed
+    middle_tip = hand_landmarks.landmark[12]
+    ring_tip = hand_landmarks.landmark[16]
+    pinky_tip = hand_landmarks.landmark[20]
+    
+    # Calculate horizontal direction vector of index finger
+    finger_vector_x = index_tip.x - index_mcp.x
+    finger_vector_y = index_tip.y - index_mcp.y
+    
+    # Calculate vector magnitude
+    magnitude = np.sqrt(finger_vector_x**2 + finger_vector_y**2)
+    
+    # Normalize vector
+    if magnitude > 0:
+        finger_vector_x /= magnitude
+        finger_vector_y /= magnitude
+    
+    # Check if finger is extended enough
+    is_extended = magnitude > MIN_FINGER_EXTENSION
+    
+    # Check if finger is horizontal enough (using absolute of y component)
+    is_horizontal = abs(finger_vector_y) < HORIZONTAL_THRESHOLD
+    
+    # Check if other fingers are curled (y position should be lower than their base)
+    others_curled = all([
+        middle_tip.y > hand_landmarks.landmark[9].y,  # Middle finger base
+        ring_tip.y > hand_landmarks.landmark[13].y,   # Ring finger base
+        pinky_tip.y > hand_landmarks.landmark[17].y   # Pinky base
+    ])
+    
+    # If all conditions are met, return direction (-1 for left, 1 for right)
+    if is_extended and is_horizontal and others_curled:
+        return -1 if finger_vector_x < 0 else 1
+    
+    return 0
 
-    # Get y-coordinates for other fingers
-    middle_tip = hand_landmarks.landmark[12].y
-    ring_tip = hand_landmarks.landmark[16].y
-    pinky_tip = hand_landmarks.landmark[20].y
 
-    # Minimum height difference between segments (in normalized coordinates)
-    MIN_HEIGHT_DIFF = 0.02  # Adjust this value to control how "straight" the finger needs to be
-
-    # Check if each segment is higher than the previous one by the minimum difference
-    is_ascending = (
-        (index_tip.y + MIN_HEIGHT_DIFF < index_dip.y)
-        and (index_dip.y + MIN_HEIGHT_DIFF < index_pip.y)
-        and (index_pip.y + MIN_HEIGHT_DIFF < index_mcp.y)
-    )
-
+def is_finger_pointing_vertical(hand_landmarks):
+    """Check if index finger is pointing up while other fingers are closed"""
+    # Get coordinates of index finger landmarks
+    index_mcp = hand_landmarks.landmark[5]  # Base
+    index_pip = hand_landmarks.landmark[6]  # First joint
+    index_dip = hand_landmarks.landmark[7]  # Second joint
+    index_tip = hand_landmarks.landmark[8]  # Tip
+    
+    # Get middle, ring, and pinky tip positions to check if they're closed
+    middle_tip = hand_landmarks.landmark[12]
+    ring_tip = hand_landmarks.landmark[16]
+    pinky_tip = hand_landmarks.landmark[20]
+    
     # Check if index is extended upward
-    index_extended = index_tip.y < index_mcp.y
-
+    is_vertical = index_tip.y < index_mcp.y
+    
+    # Check minimum extension
+    extension = abs(index_tip.y - index_mcp.y)
+    is_extended = extension > MIN_FINGER_EXTENSION
+    
     # Check if other fingers are curled
-    others_curled = all(
-        [
-            middle_tip > index_pip.y - 0.1,
-            ring_tip > index_pip.y - 0.1,
-            pinky_tip > index_pip.y - 0.1,
-        ]
-    )
-
-    return is_ascending and index_extended and others_curled
+    others_curled = all([
+        middle_tip.y > index_pip.y,
+        ring_tip.y > index_pip.y,
+        pinky_tip.y > index_pip.y
+    ])
+    
+    return is_vertical and is_extended and others_curled
 
 
 def is_index_tap(hand_landmarks, prev_y):
@@ -466,65 +514,51 @@ def is_facing_forward(face_landmarks, frame):
         return 1
 
 
-def detect_hand_swipe(hand_landmarks, current_time, is_right_hand):
-    """
-    Detect horizontal hand swipes with optimized responsiveness.
-    """
-    global last_hand_positions, last_swipe_time
+# Add these constants near the top with other constants
+CURSOR_CONFIRMATION_FRAMES = 2  # For cursor control
+cursor_finger_counter = 0  # Track consecutive pointing frames for cursor
+cursor_is_pointing = False  # Track cursor pointing state
+was_pointing = False  # Track previous pointing state
 
-    # Skip if too soon after last swipe
-    if current_time - last_swipe_time < SWIPE_COOLDOWN:
+DIRECTION_CONFIRMATION_FRAMES = 2  # For direction detection
+direction_finger_counter = 0  # Track consecutive pointing frames for direction
+direction_is_pointing = False  # Track direction pointing state
+
+def detect_pointing_direction(hand_landmarks, current_time, is_right_hand):
+    """Detect horizontal pointing direction and trigger desktop switching"""
+    global last_direction_time, last_direction, direction_finger_counter, direction_is_pointing
+    
+    # Skip if too soon after last direction change
+    if current_time - last_direction_time < POINTING_DIRECTION_COOLDOWN:
         return
-
-    # Only track fingertips for faster processing
-    fingertip_indices = [4, 8, 12, 16, 20]  # just fingertips
-
-    current_points = [(hand_landmarks.landmark[i].x, hand_landmarks.landmark[i].y) for i in fingertip_indices]
-
-    # Add current position
-    last_hand_positions.append((current_points, current_time, is_right_hand))
-
-    # Keep only very recent positions
-    while last_hand_positions and current_time - last_hand_positions[0][1] > SWIPE_MAX_DURATION:
-        last_hand_positions.pop(0)
-
-    # Need at least 2 positions
-    if len(last_hand_positions) < 2:
+    
+    # Get pointing direction
+    direction = is_finger_pointing_horizontal(hand_landmarks)
+    
+    # Update pointing state
+    if direction != 0:
+        direction_finger_counter += 1
+        if direction_finger_counter >= DIRECTION_CONFIRMATION_FRAMES:
+            direction_is_pointing = True
+    else:
+        direction_finger_counter = 0
+        direction_is_pointing = False
+    
+    # Skip if no clear direction or same as last direction
+    if direction == 0 or direction == last_direction:
         return
-
-    # Get start and end positions
-    start_points, start_time, start_hand = last_hand_positions[0]
-    end_points, end_time, end_hand = last_hand_positions[-1]
-
-    # Basic duration check
-    duration = end_time - start_time
-    if duration > SWIPE_MAX_DURATION:  # Only check maximum duration
-        return
-
-    # Calculate movements (simplified)
-    movements = [end_point[0] - start_point[0] for start_point, end_point in zip(start_points, end_points)]
-
-    # Get average horizontal movement
-    avg_movement = sum(movements) / len(movements)
-
-    # Quick threshold check
-    if abs(avg_movement) < SWIPE_THRESHOLD:
-        return
-
-    # Simple direction check
-    if (is_right_hand and avg_movement > 0) or (not is_right_hand and avg_movement < 0):
-        return
-
-    # Valid swipe detected
-    last_swipe_time = current_time
-    last_hand_positions.clear()
-
-    if avg_movement > 0:  # Moving right (must be left hand)
+    
+    # Update last direction and time
+    last_direction = direction
+    last_direction_time = current_time
+    
+    # Trigger desktop switch based on direction
+    if direction < 0:  # Pointing left
         switch_desktop_left()
-        print("Left hand swipe right detected - moving left")
-    else:  # Moving left (must be right hand)
+        print("Pointing left detected - moving left")
+    else:  # Pointing right
         switch_desktop_right()
-        print("Right hand swipe left detected - moving right")
+        print("Pointing right detected - moving right")
 
 
 # ------------------------------------------------------------------------------------------------------------------------
@@ -630,22 +664,20 @@ with GestureRecognizer.create_from_options(gesture_options) as recognizer:
 
                 # First check for pointing/cursor movement if it's the right hand
                 if is_palm_facing(hand_landmarks, is_right_hand) and is_right_hand:
-
-                    # Check for pointing gesture
-                    is_pointing = is_finger_pointing(hand_landmarks)
+                    # Check for pointing gesture for cursor control
+                    cursor_is_pointing = is_finger_pointing_vertical(hand_landmarks)
                     current_time = time.time()
 
-                    if is_pointing:
-                        finger_counter += 1
+                    if cursor_is_pointing:
+                        cursor_finger_counter += 1
                         last_pointing_time = current_time
                     else:
-                        finger_counter = 0
+                        cursor_finger_counter = 0
 
                     # Process if either pointing or within grace period
-                    if finger_counter >= FINGER_CONFIRMATION_FRAMES or (
+                    if cursor_finger_counter >= CURSOR_CONFIRMATION_FRAMES or (
                         was_pointing and current_time - last_pointing_time < POINTING_GRACE_PERIOD
                     ):
-
                         was_pointing = True
                         # Get index finger positions - MCP for movement, tip for clicking
                         index_mcp = hand_landmarks.landmark[5]  # Base of index finger
@@ -656,7 +688,7 @@ with GestureRecognizer.create_from_options(gesture_options) as recognizer:
                             last_click_time = current_time
 
                         # Only update cursor position if actually pointing (not in grace period)
-                        if finger_counter >= FINGER_CONFIRMATION_FRAMES:
+                        if cursor_finger_counter >= CURSOR_CONFIRMATION_FRAMES:
                             raw_x, raw_y = map_coordinates_to_screen(index_mcp.x, index_mcp.y, cam_width, cam_height)
 
                             # Get smoothed position
@@ -687,13 +719,16 @@ with GestureRecognizer.create_from_options(gesture_options) as recognizer:
                                 -1,
                             )  # Green circle for movement point
                             cv2.circle(
-                                frame, (int(index_tip.x * cam_width), int(index_tip.y * cam_height)), 8, (255, 0, 0), -1
+                                frame, 
+                                (int(index_tip.x * cam_width), int(index_tip.y * cam_height)), 
+                                8, 
+                                (255, 0, 0), 
+                                -1
                             )  # Red circle for click detection point
-                        continue  # Skip swipe detection if we're pointing
 
-                # Only check for swipes if we're not pointing
+                # Remove the continue statement and check for direction pointing regardless
                 if ENABLE_SWIPE_GESTURE:
-                    detect_hand_swipe(hand_landmarks, time.time(), is_right_hand)
+                    detect_pointing_direction(hand_landmarks, time.time(), is_right_hand)
 
         # Add text to show if facing forward and control status
         status_text = "Controls Active" if facing_forward else "Face Forward to Enable Controls"
