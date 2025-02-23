@@ -26,14 +26,15 @@ cam_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 # Disable pyautogui's failsafe
 pyautogui.FAILSAFE = False
 
-def is_palm_facing(hand_landmarks):
-    thumb_tip = hand_landmarks.landmark[4]
-    pinky_tip = hand_landmarks.landmark[20]
-    hand_base = hand_landmarks.landmark[0]
+def is_palm_facing(hand_landmarks, is_right_hand):
+    thumb_base = hand_landmarks.landmark[1]
+    pinky_base = hand_landmarks.landmark[17]
 
     # Check that thumb is to left of pinky and thumb is also left of base of hand
     # to make sure palm is facing screen
-    return thumb_tip.x < pinky_tip.x and thumb_tip.x < hand_base.x
+    if is_right_hand:
+        return thumb_base.x < pinky_base.x
+    return thumb_base.x > pinky_base.x
 
 def is_pinch_gesture(hand_landmarks):
     """Check if thumb and index finger are close enough"""
@@ -58,11 +59,13 @@ while True:
     results = hands.process(frame_rgb)
 
     if results.multi_hand_landmarks:
-        for hand_landmarks in results.multi_hand_landmarks:
+        for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
             # Draw hand landmarks
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-            if is_palm_facing(hand_landmarks):
+            is_right_hand = handedness.classification[0].label == 'Right'
+
+            if is_palm_facing(hand_landmarks, is_right_hand):
                 # Check for pinch gesture
                 if is_pinch_gesture(hand_landmarks):
                     # Get index finger tip position
