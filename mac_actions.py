@@ -1,4 +1,5 @@
 from subprocess import Popen, PIPE, run
+import Quartz
 
 
 def open_app(app: str):
@@ -142,22 +143,6 @@ def volume_down(amount=6.25):
     Popen(["osascript", "-e", s])
 
 
-def minimize_front_window():
-    script = """
-    tell application "System Events"
-        set frontApp to name of first application process whose frontmost is true
-    end tell
-    tell application frontApp
-    try
-        set miniaturized of window 1 to true
-    on error
-        display dialog "This app does not support minimizing via AppleScript."
-    end try
-    end tell
-    """
-    run(["osascript", "-e", script])
-
-
 def exit_window():
     script = """
     tell application "System Events"
@@ -167,3 +152,57 @@ def exit_window():
     tell application frontApp to quit
     """
     run(["osascript", "-e", script])
+
+
+def minimize_front_window():
+    s = f'''
+    tell application "System Events"
+        key code 46 using command down  -- (Cmd + M)
+    end tell
+    '''
+    run(["osascript", "-e", s])
+
+
+# NSEvent.h
+NSSystemDefined = 14
+
+# hidsystem/ev_keymap.h
+NX_KEYTYPE_SOUND_UP = 0
+NX_KEYTYPE_SOUND_DOWN = 1
+NX_KEYTYPE_PLAY = 16
+NX_KEYTYPE_NEXT = 17
+NX_KEYTYPE_PREVIOUS = 18
+NX_KEYTYPE_FAST = 19
+NX_KEYTYPE_REWIND = 20
+
+
+def HIDPostAuxKey(key):
+    def doKey(down):
+        ev = Quartz.NSEvent.otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2_(
+            NSSystemDefined,  # type
+            (0, 0),  # location
+            0xA00 if down else 0xB00,  # flags
+            0,  # timestamp
+            0,  # window
+            0,  # ctx
+            8,  # subtype
+            (key << 16) | ((0xA if down else 0xB) << 8),  # data1
+            -1,  # data2
+        )
+        cev = ev.CGEvent()
+        Quartz.CGEventPost(0, cev)
+
+    doKey(True)
+    doKey(False)
+
+
+def q_play_pause():
+    HIDPostAuxKey(NX_KEYTYPE_PLAY)
+
+
+def q_sound_up():
+    HIDPostAuxKey(NX_KEYTYPE_SOUND_UP)
+
+
+def q_sound_down():
+    HIDPostAuxKey(NX_KEYTYPE_SOUND_DOWN)
