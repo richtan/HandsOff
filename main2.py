@@ -15,7 +15,7 @@ mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(
     static_image_mode=False,
     max_num_hands=1,
-    min_detection_confidence=0.7,
+    min_detection_confidence=0.9,
     min_tracking_confidence=0.5,
 )
 mp_draw = mp.solutions.drawing_utils
@@ -31,9 +31,53 @@ model_path = "./gesture_recognizer.task"
 base_options = BaseOptions(model_asset_path=model_path)
 
 
-# last_gesture = "None"
+last_gestures = []
 # gesture_time = 0
 # gesture_start_time = 0
+
+
+def detect_transitions_and_features():
+    global last_gestures
+
+    if last_gestures[-1][0] == "Thumb_Up":
+        volume_up(1)
+        last_gestures.pop()
+        return
+    elif last_gestures[-1][0] == "Thumb_Down":
+        volume_down(1)
+        last_gestures.pop()
+        return
+
+    open_palm_time = None
+    closed_fist_time = None
+
+    for last_gesture in last_gestures:
+        gesture, timestamp = last_gesture
+
+        if gesture == "Open_Palm":
+            open_palm_time = timestamp
+
+            if closed_fist_time:
+                time_diff = timestamp - closed_fist_time
+
+                # Transition must happen within 1 second
+                if 0 < time_diff <= 1000:
+                    print("Gesture Transition Detected: Closed Fist → Open Fist")
+                    # action here
+                    last_gestures.clear()
+                    break
+        elif gesture == "Closed_Fist":
+            closed_fist_time = timestamp
+
+            if open_palm_time:
+                time_diff = timestamp - open_palm_time
+
+                # Transition must happen within 1 second
+                if 0 < time_diff <= 1000:
+                    print("Gesture Transition Detected: Open Palm → Closed Fist")
+                    # action here
+                    last_gestures.clear()
+                    break
 
 
 def gesture_result_callback(
@@ -42,20 +86,16 @@ def gesture_result_callback(
     if result.gestures:
         # Get the category name of the recognized gesture
         category_name = result.gestures[0][0].category_name
-        print(category_name)
+        print("Detected:", category_name)
 
-        # if category_name == last_gesture:
-        #     # Nothing
-        #     x = 5
-        # else:
-        #     last_gesture = category_name
+        global last_gestures
+        last_gestures.append((category_name, timestamp_ms))
 
-        if category_name == "Thumb_Up":
-            volume_up(1)
-        elif category_name == "Thumb_Down":
-            volume_down(1)
+        # Keep only the last few gestures to prevent memory issues
+        if len(last_gestures) > 10:
+            last_gestures.pop(0)
 
-        # print(result)
+        detect_transitions_and_features()
     else:
         print("No gestures recognized")
 
