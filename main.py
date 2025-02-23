@@ -61,12 +61,12 @@ last_click_time = 0
 last_pinky_y = None
 
 # Add these constants near the top with other constants
-FINGER_CONFIRMATION_FRAMES = 3  # Number of consecutive frames needed to confirm pointing
+FINGER_CONFIRMATION_FRAMES = 2  # Reduced from 3 to detect pointing faster
 finger_counter = 0  # Track consecutive pointing frames
 was_pointing = False  # Track previous pointing state
 
 # Add these constants near the top with other constants
-POINTING_GRACE_PERIOD = 0.2  # Grace period in seconds after losing pointing gesture
+POINTING_GRACE_PERIOD = 0.3  # Increased from 0.2 to handle fast movements better
 last_pointing_time = 0  # Track when we last saw pointing gesture
 
 def is_palm_facing(hand_landmarks, is_right_hand):
@@ -89,15 +89,15 @@ def is_finger_pointing(hand_landmarks):
     ring_tip = hand_landmarks.landmark[16].y
     pinky_tip = hand_landmarks.landmark[20].y
     
-    # Index finger should be generally extended
-    # Allow for some bending during clicking by checking against MCP instead of PIP
+    # More tolerant index finger extension check
     index_extended = index_tip < index_mcp
     
-    # Other fingers should be curled (tips below index pip)
+    # More tolerant check for other fingers being curled
+    # Allow fingers to be a bit more extended during fast movements
     others_curled = all([
-        middle_tip > index_pip,
-        ring_tip > index_pip,
-        pinky_tip > index_pip
+        middle_tip > index_pip - 0.1,  # Added tolerance of 0.1
+        ring_tip > index_pip - 0.1,
+        pinky_tip > index_pip - 0.1
     ])
     
     return index_extended and others_curled
