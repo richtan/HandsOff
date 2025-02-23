@@ -115,8 +115,8 @@ def is_index_tap(hand_landmarks, prev_y):
         (thumb_tip.z - index_tip.z)**2
     )
     
-    # Define threshold for "touching" - adjust this value if needed
-    TOUCH_THRESHOLD = 0.05
+    # Increased threshold for more tolerant click detection
+    TOUCH_THRESHOLD = 0.07  # Increased from 0.05
     
     return distance < TOUCH_THRESHOLD
 
