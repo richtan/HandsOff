@@ -68,6 +68,19 @@ was_pointing = False  # Track previous pointing state
 POINTING_GRACE_PERIOD = 0.3  # Increased from 0.2 to handle fast movements better
 last_pointing_time = 0  # Track when we last saw pointing gesture
 
+# Add these imports at the top with other imports
+import mediapipe as mp
+mp_face_mesh = mp.solutions.face_mesh
+mp_drawing = mp.solutions.drawing_utils
+drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
+
+# Add after MediaPipe Hand initialization
+face_mesh = mp_face_mesh.FaceMesh(
+    max_num_faces=1,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5
+)
+
 def is_palm_facing(hand_landmarks, is_right_hand):
     thumb_base = hand_landmarks.landmark[1]
     pinky_base = hand_landmarks.landmark[17]
@@ -230,6 +243,51 @@ last_index_y = None
 frametime = 1.0 / FPS
 prev_time = time.time()
 
+def is_facing_forward(face_landmarks, frame):
+    """Check if the face is looking forward enough for gestures"""
+    frame_h, frame_w, _ = frame.shape
+    face_3d = []
+    face_2d = []
+    
+    for idx, lm in enumerate(face_landmarks.landmark):
+        if idx in [33, 263, 1, 61, 291, 199]:
+            if idx == 1:
+                nose_2d = (lm.x * frame_w, lm.y * frame_h)
+                nose_3d = (lm.x * frame_w, lm.y * frame_h, lm.z * 3000)
+            
+            x, y = int(lm.x * frame_w), int(lm.y * frame_h)
+            face_2d.append([x, y])
+            face_3d.append([x, y, lm.z])
+    
+    face_2d = np.array(face_2d, dtype=np.float64)
+    face_3d = np.array(face_3d, dtype=np.float64)
+    
+    focal_length = 1 * frame_w
+    cam_matrix = np.array([
+        [focal_length, 0, frame_h / 2],
+        [0, focal_length, frame_w / 2],
+        [0, 0, 1]
+    ])
+    
+    dist_matrix = np.zeros((4, 1), dtype=np.float64)
+    
+    success, rot_vec, trans_vec = cv2.solvePnP(face_3d, face_2d, cam_matrix, dist_matrix)
+    
+    if not success:
+        return False
+        
+    rmat, _ = cv2.Rodrigues(rot_vec)
+    angles, _, _, _, _, _ = cv2.RQDecomp3x3(rmat)
+    
+    x = angles[0] * 360
+    y = angles[1] * 360
+    
+    # Define thresholds for "forward-facing"
+    FORWARD_X_THRESHOLD = 8  # Vertical angle threshold
+    FORWARD_Y_THRESHOLD = 4  # Horizontal angle threshold
+    
+    return abs(y) < FORWARD_Y_THRESHOLD and abs(x) < FORWARD_X_THRESHOLD
+
 while True:
     curr_time = time.time()
     elapsed = curr_time - prev_time
@@ -267,10 +325,27 @@ while True:
     # Process the frame and detect hands
     results = hands.process(frame_rgb)
 
+    # Process face landmarks
+    face_results = face_mesh.process(frame_rgb)
+    facing_forward = False
+    
+    if face_results.multi_face_landmarks:
+        for face_landmarks in face_results.multi_face_landmarks:
+            facing_forward = is_facing_forward(face_landmarks, frame)
+            # Draw face mesh landmarks for visual feedback
+            mp_drawing.draw_landmarks(
+                image=frame,
+                landmark_list=face_landmarks,
+                connections=mp_face_mesh.FACEMESH_TESSELATION,
+                landmark_drawing_spec=drawing_spec,
+                connection_drawing_spec=drawing_spec
+            )
+
     # Scale back to original size for display and coordinate mapping
     frame = cv2.resize(frame, (cam_width, cam_height))
 
-    if results.multi_hand_landmarks:
+    # Only process hand gestures if facing forward
+    if results.multi_hand_landmarks and facing_forward:  # Added facing_forward check
         for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
             # Draw hand landmarks
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
@@ -356,6 +431,18 @@ while True:
                         last_mouse_x = None
                         last_mouse_y = None
                         finger_counter = 0
+
+    # Add text to show if facing forward and control status
+    status_text = "Controls Active" if facing_forward else "Face Forward to Enable Controls"
+    status_color = (0, 255, 0) if facing_forward else (0, 0, 255)
+    
+    cv2.putText(frame, 
+                status_text,
+                (10, 30), 
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                status_color,
+                2)
 
     # Display the frame
     cv2.imshow("Hand Tracking", frame)

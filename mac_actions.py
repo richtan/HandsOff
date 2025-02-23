@@ -45,8 +45,25 @@ def go_to_last_applilcation():
     """
     run(["osascript", "-e", script])
 
+def switch_desktop_left():
+    script = f"""
+    tell application "System Events"
+        key code 123 using control down  -- Left arrow (Ctrl + Left)
+    end tell
+    """
+    run(["osascript", "-e", script])
 
-def switch_desktop(dir: str, count=1):
+def switch_desktop_right():
+    script = f"""
+    tell application "System Events"
+        key code 124 using control down  -- Right arrow (Ctrl + Right)
+    end tell
+    """
+    run(["osascript", "-e", script])
+
+
+
+def switch_desktop(dir: bool, count=1):
     script = f"""
     tell application "System Events"
         key code 123 using control down  -- Left arrow (Ctrl + Left)
