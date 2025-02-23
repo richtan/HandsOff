@@ -135,3 +135,28 @@ def volume_down(amount=6.25):
         """
 
     Popen(["osascript", "-e", s])
+
+def minimize_front_window():
+    script = """
+    tell application "System Events"
+        set frontApp to name of first application process whose frontmost is true
+    end tell
+    tell application frontApp
+    try
+        set miniaturized of window 1 to true
+    on error
+        display dialog "This app does not support minimizing via AppleScript."
+    end try
+    end tell
+    """
+    run(["osascript", "-e", script])
+
+def exit_window():
+    script = """
+    tell application "System Events"
+        set frontApp to name of first application process whose frontmost is true
+    end tell
+
+    tell application frontApp to quit
+    """
+    run(["osascript", "-e", script])
