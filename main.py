@@ -10,13 +10,16 @@ from mac_actions import (
     switch_desktop_right,
     open_app_fullscreen,
     toggle_play_pause_music,
+    q_sound_up,
+    q_sound_down,
+    minimize_front_window,
 )
 
 # Initialize MediaPipe Hand detection
 ENABLE_HEAD_TRACKING = True
-ENABLE_SWIPE_GESTURE = True
+ENABLE_SWIPE_GESTURE = False
 SHOW_CAMERA_FEED = True  # Add this flag to toggle camera feed display
-CAMERA_DEVICE_ID = 0
+CAMERA_DEVICE_ID = 1
 
 # Initialize MediaPipe Hand detection
 mp_hands = mp.solutions.hands
@@ -133,14 +136,23 @@ pyautogui.FAILSAFE = False
 # Model Gesture
 
 last_gestures = []
+
+
 TOGGLE_PAUSE_PLAY_COOLDOWN = 3000
 last_timestamp_toggle_pause_play = 0
+
+TOGGLE_SOUND_COOLDOWN = 750
+last_timestamp_sound_up = 0
+last_timestamp_sound_down = 0
 
 
 def detect_transitions_and_features():
     global last_gestures
     global TOGGLE_PAUSE_PLAY_COOLDOWN
     global last_timestamp_toggle_pause_play
+    global TOGGLE_SOUND_COOLDOWN
+    global last_timestamp_sound_up
+    global last_timestamp_sound_down
 
     # 0 - Unrecognized gesture, label: Unknown
     # 1 - Closed fist, label: Closed_Fist
@@ -152,12 +164,18 @@ def detect_transitions_and_features():
     # 7 - Love, label: ILoveYou
 
     if last_gestures[-1][0] == "Thumb_Up":
-        volume_up(1)
-        print("Thumbs Up")
+        # volume_up(1)
+        if (last_gestures[-1][1] - last_timestamp_sound_up) > TOGGLE_SOUND_COOLDOWN:
+            last_timestamp_sound_up = last_gestures[-1][1]
+            q_sound_up()
+            print("Thumbs Up")
         return
     elif last_gestures[-1][0] == "Thumb_Down":
-        volume_down(1)
-        print("Thumbs Down")
+        # volume_down(1)
+        if (last_gestures[-1][1] - last_timestamp_sound_down) > TOGGLE_SOUND_COOLDOWN:
+            last_timestamp_sound_down = last_gestures[-1][1]
+            q_sound_down()
+            print("Thumbs Down")
         return
     elif last_gestures[-1][0] == "ILoveYou":
         open_app_fullscreen("Safari")
@@ -197,7 +215,7 @@ def detect_transitions_and_features():
                 # Transition must happen within 1 second
                 if 0 < time_diff <= 1000:
                     print("Gesture Transition Detected: Open Palm → Closed Fist")
-                    # action here
+                    minimize_front_window()
                     last_gestures.clear()
                     break
 
@@ -251,41 +269,43 @@ def is_finger_pointing_horizontal(hand_landmarks):
     index_pip = hand_landmarks.landmark[6]  # First joint
     index_dip = hand_landmarks.landmark[7]  # Second joint
     index_tip = hand_landmarks.landmark[8]  # Tip
-    
+
     # Get middle, ring, and pinky tip positions to check if they're closed
     middle_tip = hand_landmarks.landmark[12]
     ring_tip = hand_landmarks.landmark[16]
     pinky_tip = hand_landmarks.landmark[20]
-    
+
     # Calculate horizontal direction vector of index finger
     finger_vector_x = index_tip.x - index_mcp.x
     finger_vector_y = index_tip.y - index_mcp.y
-    
+
     # Calculate vector magnitude
     magnitude = np.sqrt(finger_vector_x**2 + finger_vector_y**2)
-    
+
     # Normalize vector
     if magnitude > 0:
         finger_vector_x /= magnitude
         finger_vector_y /= magnitude
-    
+
     # Check if finger is extended enough
     is_extended = magnitude > MIN_FINGER_EXTENSION
-    
+
     # Check if finger is horizontal enough (using absolute of y component)
     is_horizontal = abs(finger_vector_y) < HORIZONTAL_THRESHOLD
-    
+
     # Check if other fingers are curled (y position should be lower than their base)
-    others_curled = all([
-        middle_tip.y > hand_landmarks.landmark[9].y,  # Middle finger base
-        ring_tip.y > hand_landmarks.landmark[13].y,   # Ring finger base
-        pinky_tip.y > hand_landmarks.landmark[17].y   # Pinky base
-    ])
-    
+    others_curled = all(
+        [
+            middle_tip.y > hand_landmarks.landmark[9].y,  # Middle finger base
+            ring_tip.y > hand_landmarks.landmark[13].y,  # Ring finger base
+            pinky_tip.y > hand_landmarks.landmark[17].y,  # Pinky base
+        ]
+    )
+
     # If all conditions are met, return direction (-1 for left, 1 for right)
     if is_extended and is_horizontal and others_curled:
         return -1 if finger_vector_x < 0 else 1
-    
+
     return 0
 
 
@@ -296,26 +316,22 @@ def is_finger_pointing_vertical(hand_landmarks):
     index_pip = hand_landmarks.landmark[6]  # First joint
     index_dip = hand_landmarks.landmark[7]  # Second joint
     index_tip = hand_landmarks.landmark[8]  # Tip
-    
+
     # Get middle, ring, and pinky tip positions to check if they're closed
     middle_tip = hand_landmarks.landmark[12]
     ring_tip = hand_landmarks.landmark[16]
     pinky_tip = hand_landmarks.landmark[20]
-    
+
     # Check if index is extended upward
     is_vertical = index_tip.y < index_mcp.y
-    
+
     # Check minimum extension
     extension = abs(index_tip.y - index_mcp.y)
     is_extended = extension > MIN_FINGER_EXTENSION
-    
+
     # Check if other fingers are curled
-    others_curled = all([
-        middle_tip.y > index_pip.y,
-        ring_tip.y > index_pip.y,
-        pinky_tip.y > index_pip.y
-    ])
-    
+    others_curled = all([middle_tip.y > index_pip.y, ring_tip.y > index_pip.y, pinky_tip.y > index_pip.y])
+
     return is_vertical and is_extended and others_curled
 
 
@@ -524,17 +540,18 @@ DIRECTION_CONFIRMATION_FRAMES = 2  # For direction detection
 direction_finger_counter = 0  # Track consecutive pointing frames for direction
 direction_is_pointing = False  # Track direction pointing state
 
+
 def detect_pointing_direction(hand_landmarks, current_time, is_right_hand):
     """Detect horizontal pointing direction and trigger desktop switching"""
     global last_direction_time, last_direction, direction_finger_counter, direction_is_pointing
-    
+
     # Skip if too soon after last direction change
     if current_time - last_direction_time < POINTING_DIRECTION_COOLDOWN:
         return
-    
+
     # Get pointing direction
     direction = is_finger_pointing_horizontal(hand_landmarks)
-    
+
     # Update pointing state
     if direction != 0:
         direction_finger_counter += 1
@@ -543,15 +560,15 @@ def detect_pointing_direction(hand_landmarks, current_time, is_right_hand):
     else:
         direction_finger_counter = 0
         direction_is_pointing = False
-    
+
     # Skip if no clear direction or same as last direction
     if direction == 0 or direction == last_direction:
         return
-    
+
     # Update last direction and time
     last_direction = direction
     last_direction_time = current_time
-    
+
     # Trigger desktop switch based on direction
     if direction < 0:  # Pointing left
         switch_desktop_left()
@@ -719,11 +736,7 @@ with GestureRecognizer.create_from_options(gesture_options) as recognizer:
                                 -1,
                             )  # Green circle for movement point
                             cv2.circle(
-                                frame, 
-                                (int(index_tip.x * cam_width), int(index_tip.y * cam_height)), 
-                                8, 
-                                (255, 0, 0), 
-                                -1
+                                frame, (int(index_tip.x * cam_width), int(index_tip.y * cam_height)), 8, (255, 0, 0), -1
                             )  # Red circle for click detection point
 
                 # Remove the continue statement and check for direction pointing regardless

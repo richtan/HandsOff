@@ -9,7 +9,7 @@ def open_app(app: str):
         Popen("open /System/Applications/" + app + ".app", shell=True)
 
 
-def open_app_fullscreen(app: str):
+def open_app_fullscreen(app: str, AXFullScreen=False):
     s = f"""
         tell application "System Events"
 	    set appRunning to (name of processes) contains "{app}"
@@ -27,7 +27,9 @@ def open_app_fullscreen(app: str):
             tell application "System Events"
                 tell process "{app}"
                     try
-                        set value of attribute "AXFullScreen" of window 1 to true
+                        {AXFullScreen and 'set value of attribute "AXFullScreen" of window 1 to true'}
+                        {not AXFullScreen and 'set position of window 1 to {0, 0}'}
+                        {not AXFullScreen and 'set size of window 1 to {4000, 4000}'} 
                     on error
                         perform action "AXRaise" of window 1
                     end try
