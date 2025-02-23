@@ -8,10 +8,13 @@ from mac_actions import (
     volume_down,
     switch_desktop_left,
     switch_desktop_right,
+    open_app_fullscreen,
+    toggle_play_pause_music,
 )
 
 # Initialize MediaPipe Hand detection
 ENABLE_HEAD_TRACKING = True
+ENABLE_SWIPE_GESTURE = True
 SHOW_CAMERA_FEED = True  # Add this flag to toggle camera feed display
 CAMERA_DEVICE_ID = 1
 
@@ -129,19 +132,42 @@ pyautogui.FAILSAFE = False
 # Model Gesture
 
 last_gestures = []
+TOGGLE_PAUSE_PLAY_COOLDOWN = 3000
+last_timestamp_toggle_pause_play = 0
 
 
 def detect_transitions_and_features():
     global last_gestures
+    global TOGGLE_PAUSE_PLAY_COOLDOWN
+    global last_timestamp_toggle_pause_play
+
+    # 0 - Unrecognized gesture, label: Unknown
+    # 1 - Closed fist, label: Closed_Fist
+    # 2 - Open palm, label: Open_Palm
+    # 3 - Pointing up, label: Pointing_Up
+    # 4 - Thumbs down, label: Thumb_Down
+    # 5 - Thumbs up, label: Thumb_Up
+    # 6 - Victory, label: Victory
+    # 7 - Love, label: ILoveYou
 
     if last_gestures[-1][0] == "Thumb_Up":
         volume_up(1)
-        last_gestures.pop()
+        print("Thumbs Up")
         return
     elif last_gestures[-1][0] == "Thumb_Down":
         volume_down(1)
-        last_gestures.pop()
+        print("Thumbs Down")
         return
+    elif last_gestures[-1][0] == "ILoveYou":
+        open_app_fullscreen("Safari")
+        print("ILoveYou")
+        return
+    elif last_gestures[-1][0] == "Victory":
+        if (last_gestures[-1][1] - last_timestamp_toggle_pause_play) > TOGGLE_PAUSE_PLAY_COOLDOWN:
+            print("Victory")
+            last_timestamp_toggle_pause_play = last_gestures[-1][1]
+            toggle_play_pause_music()
+            return
 
     open_palm_time = None
     closed_fist_time = None
@@ -179,7 +205,7 @@ def gesture_result_callback(result: GestureRecognizerResult, output_image: mp.Im
     if result.gestures:
         # Get the category name of the recognized gesture
         category_name = result.gestures[0][0].category_name
-        print("Detected:", category_name)
+        # print("Detected:", category_name)
 
         global last_gestures
         last_gestures.append((category_name, timestamp_ms))
@@ -597,12 +623,13 @@ with GestureRecognizer.create_from_options(gesture_options) as recognizer:
                 z_avg = sum(z_avg_buffer) / len(z_avg_buffer)
                 print(f"Smoothed z_avg: {z_avg:.3f}")
 
+                # Media Pipe Model Gesture Checking
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+                current_time_ms = int(time.time() * 1000)
+                detected_gestures = recognizer.recognize_async(mp_image, current_time_ms)
+
                 # First check for pointing/cursor movement if it's the right hand
                 if is_palm_facing(hand_landmarks, is_right_hand) and is_right_hand:
-                    # Media Pipe Model Gesture Checking
-                    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-                    current_time_ms = int(time.time() * 1000)
-                    detected_gestures = recognizer.recognize_async(mp_image, current_time_ms)
 
                     # Check for pointing gesture
                     is_pointing = is_finger_pointing(hand_landmarks)
@@ -665,7 +692,8 @@ with GestureRecognizer.create_from_options(gesture_options) as recognizer:
                         continue  # Skip swipe detection if we're pointing
 
                 # Only check for swipes if we're not pointing
-                detect_hand_swipe(hand_landmarks, time.time(), is_right_hand)
+                if ENABLE_SWIPE_GESTURE:
+                    detect_hand_swipe(hand_landmarks, time.time(), is_right_hand)
 
         # Add text to show if facing forward and control status
         status_text = "Controls Active" if facing_forward else "Face Forward to Enable Controls"

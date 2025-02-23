@@ -3,9 +3,7 @@ from subprocess import Popen, PIPE, run
 
 def open_app(app: str):
     try:
-        Popen(
-            "open /Applications/" + app + ".app", shell=True, errors=True
-        ).check_output()
+        Popen("open /Applications/" + app + ".app", shell=True, errors=True).check_output()
     except:
         Popen("open /System/Applications/" + app + ".app", shell=True)
 
@@ -50,6 +48,7 @@ def go_to_last_applilcation():
     """
     run(["osascript", "-e", script])
 
+
 def switch_desktop_left():
     script = f"""
     tell application "System Events"
@@ -58,6 +57,7 @@ def switch_desktop_left():
     """
     run(["osascript", "-e", script])
 
+
 def switch_desktop_right():
     script = f"""
     tell application "System Events"
@@ -65,7 +65,6 @@ def switch_desktop_right():
     end tell
     """
     run(["osascript", "-e", script])
-
 
 
 def switch_desktop(dir: bool, count=1):
@@ -88,22 +87,23 @@ def switch_desktop(dir: bool, count=1):
 
 
 def toggle_play_pause_music():
-    script = """
-    tell application "System Events"
-        set frontApp to name of first application process whose frontmost is true
-    end tell
-    
-    if frontApp is "Spotify" then
-        tell application "Spotify" to playpause
-    else if frontApp is "QuickTime Player" then
-        tell application "QuickTime Player" to tell document 1 to play
-    else if frontApp is "VLC" then
-        tell application "VLC" to play
-    else
-        tell application "System Events" to key code 49 -- Simulates pressing the spacebar
+    s = '''
+    on is_running(appName)
+        tell application "System Events" to (name of processes) contains appName
+    end is_running
+
+    if is_running("Music") then
+        tell application "Music"
+            playpause
+        end tell
+
+    else if is_running("Spotify") then
+        tell application "Spotify"
+            playpause
+        end tell
     end if
-    """
-    run(["osascript", "-e", script])
+    '''
+    run(["osascript", "-e", s])
 
 
 def toggle_play_pause_on_app(delay=0.5):
@@ -141,6 +141,7 @@ def volume_down(amount=6.25):
 
     Popen(["osascript", "-e", s])
 
+
 def minimize_front_window():
     script = """
     tell application "System Events"
@@ -155,6 +156,7 @@ def minimize_front_window():
     end tell
     """
     run(["osascript", "-e", script])
+
 
 def exit_window():
     script = """
