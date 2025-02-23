@@ -4,6 +4,8 @@ import pyautogui
 import numpy as np
 import time
 
+ENABLE_HEAD_TRACKING = True
+
 # Initialize MediaPipe Hand detection
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(
@@ -350,6 +352,8 @@ while True:
     # Scale back to original size for display and coordinate mapping
     frame = cv2.resize(frame, (cam_width, cam_height))
 
+    facing_forward = facing_forward and ENABLE_HEAD_TRACKING
+
     # Only process hand gestures if facing forward
     if results.multi_hand_landmarks and facing_forward:  # Added facing_forward check
         for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
@@ -357,6 +361,10 @@ while True:
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
             is_right_hand = handedness.classification[0].label == 'Right'
+            
+            # Skip if not right hand
+            if not is_right_hand:
+                continue
 
             # Calculate z average with smoothing
             z_values = [landmark.z for landmark in hand_landmarks.landmark]
