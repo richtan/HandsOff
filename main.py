@@ -16,7 +16,7 @@ from mac_actions import (
 )
 
 # Initialize MediaPipe Hand detection
-ENABLE_HEAD_TRACKING = True
+ENABLE_HEAD_TRACKING = False
 ENABLE_SWIPE_GESTURE = True
 SHOW_CAMERA_FEED = True  # Add this flag to toggle camera feed display
 CAMERA_DEVICE_ID = 1
@@ -647,7 +647,7 @@ with GestureRecognizer.create_from_options(gesture_options) as recognizer:
         # Scale back to original size for display and coordinate mapping
         frame = cv2.resize(frame, (cam_width, cam_height))
 
-        facing_forward = facing_forward and ENABLE_HEAD_TRACKING
+        facing_forward = facing_forward if ENABLE_HEAD_TRACKING else True
 
         # Only process hand gestures if facing forward
         if results.multi_hand_landmarks and facing_forward:  # Added facing_forward check
